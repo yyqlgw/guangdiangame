@@ -1,5 +1,5 @@
 'use strict';
-const CACHE = 'qimomigong-f250ca43';
+const CACHE = 'qimomigong-b2f92165';
 const ASSETS = [
   './',
   './index.html',

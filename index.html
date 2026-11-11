@@ -37,7 +37,35 @@ body::before{
   border:1px solid #2a4a72;border-radius:5px;padding:0 4px}
 .tb-mid{font-size:11px;color:#5f7189;letter-spacing:1px}
 .tb-right{font-size:10px;color:#4d5d72;font-family:ui-monospace,Menlo,monospace;
-  max-width:38%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  max-width:32%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mutebtn{flex-shrink:0;width:22px;height:22px;border-radius:6px;border:1px solid #26313f;
+  background:#141d28;color:#7fb4f0;font-size:11px;line-height:1;cursor:pointer;
+  font-family:inherit;padding:0;display:grid;place-items:center;transition:color .12s,border-color .12s}
+.mutebtn:hover{border-color:#3d5573}
+.mutebtn.off{color:#48586b;border-color:#1e2734;text-decoration:line-through}
+
+/* ---- 特效层 ---- */
+#fxlayer{position:fixed;inset:0;pointer-events:none;z-index:9998;overflow:hidden}
+.floater{position:absolute;transform:translate(-50%,-50%);font-size:19px;font-weight:800;
+  font-family:ui-monospace,Menlo,monospace;letter-spacing:.5px;white-space:nowrap;
+  animation:floatUp .9s cubic-bezier(.2,.7,.3,1) forwards;text-shadow:0 2px 10px rgba(0,0,0,.85)}
+.floater.dmg-hit{color:#ff9d6b}
+.floater.dmg-hurt{color:#ff6478}
+@keyframes floatUp{
+  0%{opacity:0;transform:translate(-50%,-50%) scale(.8)}
+  18%{opacity:1;transform:translate(-50%,-64%) scale(1.14)}
+  40%{transform:translate(-50%,-78%) scale(1)}
+  100%{opacity:0;transform:translate(-50%,-140%) scale(.96)}
+}
+#app.shaking{animation:shakeIt .32s cubic-bezier(.36,.07,.19,.97)}
+@keyframes shakeIt{
+  0%,100%{transform:translate(0,0)}
+  12%{transform:translate(calc(var(--shake,6px) * -0.6),1px)}
+  28%{transform:translate(calc(var(--shake,6px) * 0.55),-1px)}
+  45%{transform:translate(calc(var(--shake,6px) * -0.4),1px)}
+  62%{transform:translate(calc(var(--shake,6px) * 0.3),0)}
+  80%{transform:translate(calc(var(--shake,6px) * -0.12),0)}
+}
 
 .hpwrap{flex-shrink:0;margin:6px 0 8px}
 .hpbar{height:4px;border-radius:2px;background:#1a2230;overflow:hidden}
@@ -89,6 +117,7 @@ body::before{
   text-align:center;cursor:pointer;transition:border-color .12s,transform .12s}
 .enemy.targetable:hover{border-color:#c0443a;transform:translateY(-2px)}
 .enemy .intent{font-size:12px;font-weight:700;color:#f0c674;min-height:17px;white-space:nowrap}
+.enemy .intent.heavy{color:#ff7a5f;text-shadow:0 0 10px rgba(255,110,80,.45)}
 .enemy .av{font-size:30px;line-height:1.2;color:#a8bdd6}
 .enemy .en{font-size:11.5px;font-weight:600;color:#c8d6e6;margin-top:2px;line-height:1.3}
 .enemy .ehp{font-size:10px;color:#8ba0bb;margin-top:3px}
@@ -413,6 +442,17 @@ function makeEnemy(id, nuid) {
     turn: 0,
     intent: null
   };
+}
+
+/* 意图的真实伤害：与 actEnemy 完全同一套算法，供界面显示 */
+function intentDamage(s, e) {
+  const mv = (e && e.intent) || {};
+  if (!mv.a) return 0;
+  let base = Math.max(0, (mv.a || 0) + (e.str || 0) - (e.charge || 0));
+  if (e.weak > 0) base = Math.floor(base * 0.75);
+  if (s.playerBuffs && s.playerBuffs.vuln > 0) base = Math.floor(base * 1.5);
+  if (s.relics && s.relics.indexOf('studentcard') >= 0) base = Math.max(0, base - 1);
+  return base;
 }
 
 function rollIntent(state, e) {
@@ -979,10 +1019,350 @@ function finalScore(s) {
 const CORE = {
   RNG, CARDS, ENEMIES, RELICS, EVENTS, STARTER, ACT,
   initialState, reduce, clone, finalScore, hashStr,
-  damageOf, mkNode, genMap, startBattle
+  damageOf, mkNode, genMap, startBattle, intentDamage
 };
 if (typeof module !== 'undefined' && module.exports) module.exports = CORE;
 if (typeof window !== 'undefined') window.CORE = CORE;
+
+</script>
+<script>
+'use strict';
+/* ============================================================
+   期末迷宫 · FX
+   ------------------------------------------------------------
+   1) 音效：全部用 WebAudio 现场合成，不加载任何音频文件。
+      理由：单文件离线可用、体积为零、iOS 不会有解码/加载问题。
+   2) 视觉反馈：飘字、震屏、受击抖动。
+   ============================================================ */
+(function () {
+  const MASTER_GAIN = 0.9;
+  let ctx = null, master = null, noiseBuf = null;
+  let muted = false;
+  try { muted = localStorage.getItem('fmz_mute') === '1'; } catch (e) {}
+
+  function ensure() {
+    if (ctx) return ctx;
+    /* 测试钩子：允许注入 OfflineAudioContext 做波形验证 */
+    if (window.__forced) {
+      ctx = window.__forced;
+      master = ctx.createGain();
+      master.gain.value = muted ? 0 : MASTER_GAIN;
+      master.connect(ctx.destination);
+      const flen = Math.floor(ctx.sampleRate * 0.8);
+      noiseBuf = ctx.createBuffer(1, flen, ctx.sampleRate);
+      const fd = noiseBuf.getChannelData(0);
+      for (let i = 0; i < flen; i++) fd[i] = Math.random() * 2 - 1;
+      return ctx;
+    }
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return null;
+    try { ctx = new AC(); } catch (e) { return null; }
+    master = ctx.createGain();
+    master.gain.value = muted ? 0 : MASTER_GAIN;
+    master.connect(ctx.destination);
+    const len = Math.floor(ctx.sampleRate * 0.8);
+    noiseBuf = ctx.createBuffer(1, len, ctx.sampleRate);
+    const d = noiseBuf.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+    return ctx;
+  }
+
+  function wake() {
+    if (!ensure()) return null;
+    if (ctx.state === 'suspended') { try { ctx.resume(); } catch (e) {} }
+    return ctx;
+  }
+
+  function setMuted(v) {
+    muted = !!v;
+    try { localStorage.setItem('fmz_mute', muted ? '1' : '0'); } catch (e) {}
+    if (master) master.gain.value = muted ? 0 : MASTER_GAIN;
+  }
+
+  /* ---------- 合成原语 ---------- */
+  function tone(o) {
+    const c = wake(); if (!c || muted) return;
+    const t0 = c.currentTime + (o.at || 0);
+    const dur = o.dur || 0.14;
+    const osc = c.createOscillator();
+    const g = c.createGain();
+    osc.type = o.type || 'sine';
+    osc.frequency.setValueAtTime(Math.max(20, o.f0), t0);
+    if (o.f1 != null) osc.frequency.exponentialRampToValueAtTime(Math.max(20, o.f1), t0 + (o.sw || dur));
+    const peak = o.vol == null ? 0.22 : o.vol;
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(Math.max(0.0004, peak), t0 + (o.a || 0.006));
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    let node = osc;
+    if (o.bp) {
+      const f = c.createBiquadFilter();
+      f.type = 'bandpass'; f.frequency.value = o.bp; f.Q.value = o.q || 1.4;
+      node.connect(f); node = f;
+    }
+    node.connect(g); g.connect(master);
+    osc.start(t0); osc.stop(t0 + dur + 0.04);
+  }
+
+  function noise(o) {
+    const c = wake(); if (!c || muted || !noiseBuf) return;
+    const t0 = c.currentTime + (o.at || 0);
+    const dur = o.dur || 0.15;
+    const src = c.createBufferSource();
+    src.buffer = noiseBuf; src.loop = true;
+    const f = c.createBiquadFilter();
+    f.type = o.ftype || 'bandpass';
+    f.frequency.setValueAtTime(Math.max(40, o.f0 || 800), t0);
+    if (o.f1 != null) f.frequency.exponentialRampToValueAtTime(Math.max(40, o.f1), t0 + dur);
+    f.Q.value = o.q || 1.2;
+    const g = c.createGain();
+    /* 噪声的感知响度远低于同峰值正弦，统一补偿 2.6 倍 */
+    const peak = (o.vol == null ? 0.14 : o.vol) * (o.raw ? 1 : 2.6);
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(Math.max(0.0004, peak), t0 + (o.a || 0.008));
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    src.connect(f); f.connect(g); g.connect(master);
+    src.start(t0); src.stop(t0 + dur + 0.04);
+  }
+
+  function thump(f, dur, vol) {
+    tone({ type: 'sine', f0: f, f1: f * 0.55, dur: dur, vol: vol, a: 0.004, sw: dur * 0.8 });
+    noise({ f0: f * 8, f1: f * 1.5, dur: dur * 0.5, vol: vol * 0.4, q: 0.8, ftype: 'lowpass' });
+  }
+
+  /* ---------- 每张牌的声音（按物理现象设计） ---------- */
+  const CARD_SFX = {
+    /* 光电效应：光照金属，明亮短促的「叮」 */
+    photo() {
+      tone({ type: 'sine', f0: 1400, f1: 620, dur: 0.11, vol: 0.3 });
+      tone({ type: 'triangle', f0: 2800, f1: 1400, dur: 0.07, vol: 0.1 });
+    },
+    /* 激光脉冲：高频陡降的「啾」 */
+    laser() {
+      tone({ type: 'sawtooth', f0: 2400, f1: 300, dur: 0.15, vol: 0.2, sw: 0.09 });
+      noise({ f0: 3600, f1: 800, dur: 0.09, vol: 0.12, q: 1 });
+    },
+    /* 量子隧穿：噪声穿墙，带一点低频穿过感 */
+    tunnel() {
+      noise({ f0: 300, f1: 2600, dur: 0.2, vol: 0.15, q: 6 });
+      tone({ type: 'sine', f0: 190, f1: 88, dur: 0.18, vol: 0.13 });
+    },
+    /* 全反射：金属般的双泛音 */
+    reflect() {
+      tone({ type: 'triangle', f0: 780, f1: 1560, dur: 0.09, vol: 0.2 });
+      tone({ type: 'sine', f0: 2340, dur: 0.16, vol: 0.09, a: 0.02 });
+    },
+    /* 康普顿散射：两声错开的「嗒嗒」 */
+    compton() {
+      tone({ type: 'square', f0: 900, f1: 500, dur: 0.06, vol: 0.12 });
+      tone({ type: 'square', f0: 1200, f1: 700, dur: 0.06, vol: 0.1, at: 0.08 });
+    },
+    /* 衍射：宽频噪声铺开 */
+    diffract() {
+      noise({ f0: 600, f1: 3200, dur: 0.26, vol: 0.19, q: 1.8 });
+    },
+    /* 多普勒效应：先升后降，标准多普勒 */
+    doppler() {
+      tone({ type: 'sine', f0: 520, f1: 1250, dur: 0.15, vol: 0.21 });
+      tone({ type: 'sine', f0: 1250, f1: 520, dur: 0.15, vol: 0.15, at: 0.15 });
+    },
+    /* 核聚变：低频轰 + 高频碎屑 */
+    fusion() {
+      thump(72, 0.5, 0.4);
+      noise({ f0: 1600, f1: 120, dur: 0.4, vol: 0.15, q: 1 });
+    },
+    /* 电磁脉冲：方波嗡嗡 + 电流爆 */
+    emp() {
+      tone({ type: 'square', f0: 140, f1: 58, dur: 0.3, vol: 0.15 });
+      noise({ f0: 1200, f1: 300, dur: 0.18, vol: 0.1, q: 3 });
+    },
+    /* 洛伦兹力：带电粒子偏转，弯曲的滑音 */
+    lorentz() {
+      tone({ type: 'sawtooth', f0: 300, f1: 950, dur: 0.13, vol: 0.15 });
+      tone({ type: 'sawtooth', f0: 950, f1: 300, dur: 0.13, vol: 0.11, at: 0.13 });
+    },
+    /* 质能方程：最沉的一声 */
+    einstein() {
+      thump(56, 0.55, 0.42);
+      tone({ type: 'sine', f0: 1800, f1: 900, dur: 0.28, vol: 0.09, a: 0.04 });
+    },
+    /* 链式反应：三连升调 */
+    chain() {
+      [0, 0.06, 0.12].forEach(function (d, i) {
+        tone({ type: 'square', f0: 600 + i * 320, f1: 520 + i * 320, dur: 0.06, vol: 0.12, at: d });
+      });
+    },
+    /* 黑洞：下潜到听不见 */
+    blackhole() {
+      thump(46, 0.7, 0.4);
+      noise({ f0: 130, f1: 38, dur: 0.68, vol: 0.17, q: 1 });
+    },
+
+    /* 半导体：温和的短音（格挡） */
+    semi() { tone({ type: 'sine', f0: 420, f1: 300, dur: 0.11, vol: 0.22 }); },
+    /* 偏振片：滤光，明净上行 */
+    polarizer() { tone({ type: 'triangle', f0: 660, f1: 990, dur: 0.13, vol: 0.16 }); },
+    /* 光纤：两下细碎的沙沙 */
+    fiber() {
+      noise({ f0: 2400, f1: 3600, dur: 0.08, vol: 0.11, q: 2 });
+      noise({ f0: 3000, f1: 4300, dur: 0.08, vol: 0.09, q: 2, at: 0.07 });
+    },
+    /* 超导：干净的长音，无阻尼 */
+    supercon() {
+      tone({ type: 'sine', f0: 520, dur: 0.3, vol: 0.13, a: 0.05 });
+      tone({ type: 'sine', f0: 780, dur: 0.3, vol: 0.09, a: 0.05 });
+    },
+    /* 薛定谔的猫：两个差频叠加 → 拍频，不确定感 */
+    cat() {
+      tone({ type: 'sine', f0: 700, dur: 0.32, vol: 0.15 });
+      tone({ type: 'sine', f0: 715, dur: 0.32, vol: 0.15 });
+    },
+    /* 干涉：同相位叠加 */
+    interfere() {
+      tone({ type: 'triangle', f0: 880, dur: 0.18, vol: 0.13 });
+      tone({ type: 'triangle', f0: 884, dur: 0.18, vol: 0.11, at: 0.09 });
+    },
+    /* 傅里叶变换：拆解成多个频率分量 */
+    fourier() {
+      for (let i = 0; i < 4; i++) {
+        noise({ f0: 1200 + i * 600, dur: 0.06, vol: 0.09, q: 3, at: i * 0.05 });
+      }
+    },
+    /* 麦克斯韦方程：方波跳变，能量补充 */
+    maxwell() { tone({ type: 'square', f0: 440, f1: 880, dur: 0.11, vol: 0.11 }); },
+    /* 热力学第二定律：不可逆的下坠 */
+    entropy() { tone({ type: 'sawtooth', f0: 700, f1: 170, dur: 0.38, vol: 0.11 }); },
+    /* 聚焦：汇聚上升 */
+    focus() { tone({ type: 'sine', f0: 330, f1: 660, dur: 0.24, vol: 0.15, a: 0.03 }); },
+    /* 反射镜：清脆金属 */
+    mirror() { tone({ type: 'triangle', f0: 1200, f1: 1650, dur: 0.17, vol: 0.13 }); },
+
+    _default() {
+      tone({ type: 'triangle', f0: 560, f1: 380, dur: 0.1, vol: 0.16 });
+    }
+  };
+
+  /* ---------- 战斗 / 界面音效 ---------- */
+  const UI_SFX = {
+    click() { tone({ type: 'sine', f0: 720, dur: 0.045, vol: 0.1, a: 0.002 }); },
+    turn() {
+      tone({ type: 'sine', f0: 440, dur: 0.1, vol: 0.12 });
+      tone({ type: 'sine', f0: 660, dur: 0.12, vol: 0.09, at: 0.06 });
+    },
+    battle() {
+      tone({ type: 'sawtooth', f0: 120, f1: 240, dur: 0.3, vol: 0.1, a: 0.05 });
+      tone({ type: 'sine', f0: 880, dur: 0.2, vol: 0.07, at: 0.12 });
+    },
+    /* 命中敌人：闷响 + 碎裂 */
+    hit() {
+      thump(120, 0.16, 0.26);
+      noise({ f0: 2200, f1: 700, dur: 0.09, vol: 0.1, q: 1 });
+    },
+    /* 玩家受伤：更低更重 */
+    hurt() {
+      thump(78, 0.24, 0.34);
+      noise({ f0: 900, f1: 200, dur: 0.16, vol: 0.11, q: 1, ftype: 'lowpass' });
+    },
+    /* 格挡吸收：金属轻击 */
+    block() {
+      tone({ type: 'triangle', f0: 1500, f1: 1100, dur: 0.08, vol: 0.1 });
+      tone({ type: 'sine', f0: 2400, dur: 0.07, vol: 0.06 });
+    },
+    /* 击杀 */
+    kill() {
+      thump(150, 0.2, 0.22);
+      noise({ f0: 3000, f1: 400, dur: 0.24, vol: 0.14, q: 1.2 });
+      tone({ type: 'sine', f0: 300, f1: 120, dur: 0.24, vol: 0.1 });
+    },
+    /* 抽卡 / 洗牌 */
+    draw() { noise({ f0: 2600, f1: 3800, dur: 0.07, vol: 0.09, q: 2 }); },
+    /* 治疗 */
+    heal() {
+      [0, 0.09, 0.18].forEach(function (d, i) {
+        tone({ type: 'sine', f0: 520 * Math.pow(1.26, i), dur: 0.22, vol: 0.12, at: d, a: 0.02 });
+      });
+    },
+    /* 拿到奖励 */
+    reward() {
+      [0, 0.07, 0.14].forEach(function (d, i) {
+        tone({ type: 'triangle', f0: 880 * Math.pow(1.19, i), dur: 0.3, vol: 0.1, at: d, a: 0.01 });
+      });
+    },
+    relic() {
+      tone({ type: 'sine', f0: 660, dur: 0.3, vol: 0.14, a: 0.02 });
+      tone({ type: 'sine', f0: 990, dur: 0.3, vol: 0.1, a: 0.02 });
+    },
+    /* 胜利：大三和弦琶音 */
+    win() {
+      [523.25, 659.25, 783.99, 1046.5].forEach(function (f, i) {
+        tone({ type: 'triangle', f0: f, dur: 0.6, vol: 0.13, at: i * 0.11, a: 0.01 });
+      });
+    },
+    /* 失败：下行小调 */
+    lose() {
+      [392, 330, 262, 196].forEach(function (f, i) {
+        tone({ type: 'sine', f0: f, dur: 0.5, vol: 0.13, at: i * 0.13, a: 0.02 });
+      });
+    },
+    error() { tone({ type: 'square', f0: 160, f1: 110, dur: 0.14, vol: 0.1 }); }
+  };
+
+  /* ---------- 视觉反馈 ---------- */
+  function layer() {
+    let l = document.getElementById('fxlayer');
+    if (!l) {
+      l = document.createElement('div');
+      l.id = 'fxlayer';
+      document.body.appendChild(l);
+    }
+    return l;
+  }
+
+  function floatText(x, y, text, cls) {
+    const l = layer();
+    const d = document.createElement('div');
+    d.className = 'floater ' + (cls || '');
+    d.textContent = text;
+    d.style.left = x + 'px';
+    d.style.top = y + 'px';
+    l.appendChild(d);
+    setTimeout(function () { if (d.parentNode) d.parentNode.removeChild(d); }, 900);
+  }
+
+  function shake(power) {
+    const app = document.getElementById('app');
+    if (!app) return;
+    app.style.setProperty('--shake', (power || 6) + 'px');
+    app.classList.remove('shaking');
+    void app.offsetWidth;
+    app.classList.add('shaking');
+    setTimeout(function () { app.classList.remove('shaking'); }, 340);
+  }
+
+  function centerOf(sel) {
+    const e = document.querySelector(sel);
+    if (!e) return null;
+    const r = e.getBoundingClientRect();
+    return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+  }
+
+  function clearAll() {
+    const l = document.getElementById('fxlayer');
+    if (l) l.innerHTML = '';
+  }
+
+  window.SFX = {
+    card(id) { (CARD_SFX[id] || CARD_SFX._default)(); },
+    ui(name) { const f = UI_SFX[name]; if (f) f(); },
+    setMuted: setMuted,
+    isMuted() { return muted; },
+    floatText: floatText,
+    shake: shake,
+    centerOf: centerOf,
+    clear: clearAll,
+    /* 仅测试用：丢弃已缓存的音频上下文 */
+    __reset() { ctx = null; master = null; noiseBuf = null; }
+  };
+})();
 
 </script>
 <script>
@@ -1025,6 +1405,17 @@ if (typeof window !== 'undefined') window.CORE = CORE;
     const right = el('div', 'tb-right');
     right.textContent = 'SEED ' + S.seedLabel;
     bar.appendChild(right);
+
+    const mute = el('button', 'mutebtn' + (FX.isMuted() ? ' off' : ''), '♪');
+    mute.title = FX.isMuted() ? '开启声音' : '静音';
+    mute.onclick = (e) => {
+      e.stopPropagation();
+      FX.setMuted(!FX.isMuted());
+      mute.classList.toggle('off', FX.isMuted());
+      mute.title = FX.isMuted() ? '开启声音' : '静音';
+      if (!FX.isMuted()) FX.ui('click');
+    };
+    bar.appendChild(mute);
     return bar;
   }
 
@@ -1081,7 +1472,7 @@ if (typeof window !== 'undefined') window.CORE = CORE;
       const seed = C.hashStr(raw);
       S = C.initialState(seed);
       S.seedLabel = raw.slice(0, 12);
-      S = reduce(S, { type: ACT.START });
+      dispatch({ type: ACT.START });
       render();
     };
     row.appendChild(b1);
@@ -1143,8 +1534,7 @@ if (typeof window !== 'undefined') window.CORE = CORE;
       }
       row.onclick = () => {
         if (busy) return;
-        S = reduce(S, { type: ACT.PICK_NODE, floor: S.floor, idx: i });
-        save(); render();
+        dispatch({ type: ACT.PICK_NODE, floor: S.floor, idx: i });
       };
       list.appendChild(row);
     });
@@ -1177,11 +1567,13 @@ if (typeof window !== 'undefined') window.CORE = CORE;
       const card = el('div', 'enemy');
       const it = e.intent || {};
       let intent = '';
-      if (it.a) intent = '⚔ ' + ((it.a) + (e.str || 0)) + (it.times > 1 ? ' ×' + it.times : '');
-      else if (it.bl) intent = '◆ 守 ' + it.bl;
+      if (it.a) {
+        const dmg = C.intentDamage(S, e);
+        intent = '⚔ ' + dmg + (it.times > 1 ? ' ×' + it.times : '');
+      } else if (it.bl) intent = '◆ 守 ' + it.bl;
       else if (it.sf) intent = '↑ 强化';
       else if (it.db) intent = '↓ 削弱';
-      card.appendChild(el('div', 'intent', intent));
+      card.appendChild(el('div', 'intent' + (it.a && C.intentDamage(S, e) >= 12 ? ' heavy' : ''), intent));
       card.appendChild(el('div', 'av', ENEMIES[e.id].ic));
       card.appendChild(el('div', 'en', ENEMIES[e.id].n));
       const hp = el('div', 'ehp', e.hp + ' / ' + e.maxHp + (e.block ? '  守' + e.block : ''));
@@ -1236,7 +1628,7 @@ if (typeof window !== 'undefined') window.CORE = CORE;
     foot.appendChild(hint);
     const end = el('button', 'btn endturn', '结束回合');
     end.disabled = busy;
-    end.onclick = () => { if (busy) return; S = reduce(S, { type: ACT.END_TURN }); save(); render(); };
+    end.onclick = () => { if (busy) return; dispatch({ type: ACT.END_TURN }); };
     foot.appendChild(end);
     root.appendChild(foot);
 
@@ -1260,16 +1652,14 @@ if (typeof window !== 'undefined') window.CORE = CORE;
       return;
     }
     const tgt = alive.length ? alive[0].uid : null;
-    S = reduce(S, { type: ACT.PLAY, hand: i, target: tgt });
     pendingCard = -1;
-    save(); render();
+    dispatch({ type: ACT.PLAY, hand: i, target: tgt });
   }
   function onEnemyClick(uid) {
     if (pendingCard < 0) return;
     const idx = pendingCard;
     pendingCard = -1;
-    S = reduce(S, { type: ACT.PLAY, hand: idx, target: uid });
-    save(); render();
+    dispatch({ type: ACT.PLAY, hand: idx, target: uid });
   }
 
   /* ---------------- REWARD ---------------- */
@@ -1285,12 +1675,12 @@ if (typeof window !== 'undefined') window.CORE = CORE;
       const row = el('div', 'offer');
       row.innerHTML = '<div class="onm">' + esc(c.n) + '<i class="oc">' + c.c + ' 费</i></div>' +
         '<div class="od">' + esc(c.d) + '</div>';
-      row.onclick = () => { S = reduce(S, { type: ACT.TAKE_CARD, id }); save(); render(); };
+      row.onclick = () => { dispatch({ type: ACT.TAKE_CARD, id }); };
       list.appendChild(row);
     });
     root.appendChild(list);
     const skip = el('button', 'btn', '跳过（+20 分）');
-    skip.onclick = () => { S = reduce(S, { type: ACT.SKIP_CARD }); save(); render(); };
+    skip.onclick = () => { dispatch({ type: ACT.SKIP_CARD }); };
     root.appendChild(skip);
     return root;
   }
@@ -1311,7 +1701,7 @@ if (typeof window !== 'undefined') window.CORE = CORE;
       ev.op.forEach((o, i) => {
         const b = el('div', 'evopt');
         b.innerHTML = '<div class="evo-t">' + esc(o.t) + '</div><div class="evo-d">' + esc(o.d) + '</div>';
-        b.onclick = () => { S = reduce(S, { type: ACT.EVENT_CHOOSE, idx: i }); save(); render(); };
+        b.onclick = () => { dispatch({ type: ACT.EVENT_CHOOSE, idx: i }); };
         list.appendChild(b);
       });
       root.appendChild(list);
@@ -1320,7 +1710,7 @@ if (typeof window !== 'undefined') window.CORE = CORE;
       (S.eventResult || []).forEach(r => res.appendChild(el('div', 'evr', r)));
       root.appendChild(res);
       const go = el('button', 'btn primary', '继续');
-      go.onclick = () => { S = reduce(S, { type: ACT.EVENT_DONE }); save(); render(); };
+      go.onclick = () => { dispatch({ type: ACT.EVENT_DONE }); };
       root.appendChild(go);
     }
     return root;
@@ -1339,11 +1729,11 @@ if (typeof window !== 'undefined') window.CORE = CORE;
     const amt = Math.round(S.maxHp * 0.4);
     const a = el('div', 'evopt');
     a.innerHTML = '<div class="evo-t">☕ 睡一觉</div><div class="evo-d">回复约 ' + amt + ' 点生命</div>';
-    a.onclick = () => { S = reduce(S, { type: ACT.REST_CHOOSE, kind: 'heal' }); save(); render(); };
+    a.onclick = () => { dispatch({ type: ACT.REST_CHOOSE, kind: 'heal' }); };
     list.appendChild(a);
     const b = el('div', 'evopt');
     b.innerHTML = '<div class="evo-t">✎ 整理笔记</div><div class="evo-d">永久移除牌组里的一张牌</div>';
-    b.onclick = () => { S = reduce(S, { type: ACT.REST_CHOOSE, kind: 'remove' }); save(); render(); };
+    b.onclick = () => { dispatch({ type: ACT.REST_CHOOSE, kind: 'remove' }); };
     list.appendChild(b);
     root.appendChild(list);
     return root;
@@ -1370,8 +1760,7 @@ if (typeof window !== 'undefined') window.CORE = CORE;
         '<div class="od">' + esc(c.d) + '</div>';
       row.onclick = () => {
         const idx = S.deckIds.indexOf(id);
-        S = reduce(S, { type: ACT.REMOVE_CARD, deckIdx: idx });
-        save(); render();
+        dispatch({ type: ACT.REMOVE_CARD, deckIdx: idx });
       };
       list.appendChild(row);
     }
@@ -1416,6 +1805,86 @@ if (typeof window !== 'undefined') window.CORE = CORE;
     return root;
   }
 
+  /* ---------------- 动作分发（统一在此出声） ---------------- */
+  const FX = window.SFX || { card(){}, ui(){}, floatText(){}, shake(){}, centerOf(){return null}, isMuted(){return false}, setMuted(){}, clear(){} };
+
+  function dispatch(act) {
+    const prev = S;
+    const next = reduce(S, act);
+    if (next === prev) { FX.ui('error'); return; }
+    playCues(prev, next, act);
+    S = next;
+    save();
+    render();
+  }
+
+  function playCues(prev, next, act) {
+    const pb = prev && prev.battle;
+    const nb = next && next.battle;
+
+    /* --- 打牌 --- */
+    if (act.type === ACT.PLAY && pb) {
+      const inst = pb.hand[act.hand];
+      if (inst && CARDS[inst.id]) FX.card(inst.id);
+      else FX.card('_default');
+    }
+
+    /* --- 结束时敌人行动 --- */
+    if (act.type === ACT.END_TURN) FX.ui('turn');
+
+    /* --- 进入战斗 --- */
+    if (prev && prev.fsm !== 'BATTLE' && next && next.fsm === 'BATTLE') FX.ui('battle');
+
+    /* --- 伤害与击杀 --- */
+    if (pb && nb) {
+      let enemyDmg = 0, killed = 0;
+      for (const ne of nb.enemies) {
+        const pe = pb.enemies.find(e => e.uid === ne.uid);
+        if (!pe) continue;
+        const lost = pe.hp - ne.hp;
+        if (lost > 0) enemyDmg += lost;
+        if (pe.hp > 0 && ne.hp <= 0) killed++;
+      }
+      const hpLost = prev.hp - next.hp;
+      if (hpLost > 0) {
+        FX.ui('hurt');
+        FX.shake(Math.min(12, 4 + hpLost * 0.5));
+        const p = FX.centerOf('.arena');
+        if (p) FX.floatText(p.x - 70, p.y, '-' + hpLost, 'dmg-hurt');
+      } else if (nb.block > pb.block) {
+        FX.ui('block');
+      } else if (enemyDmg > 0) {
+        FX.ui('hit');
+      }
+      if (killed > 0) FX.ui('kill');
+      if (enemyDmg > 0) {
+        const p = FX.centerOf('.enemies');
+        if (p) FX.floatText(p.x, p.y - 30, '-' + enemyDmg, 'dmg-hit');
+      }
+      if (nb.hand.length > pb.hand.length) FX.ui('draw');
+    }
+
+    /* --- 治疗 / 遗物 / 奖励 --- */
+    if (prev && next && next.hp > prev.hp && next.fsm === prev.fsm) FX.ui('heal');
+
+    if (act.type === ACT.TAKE_CARD) FX.ui('reward');
+
+    if (act.type === ACT.EVENT_CHOOSE) {
+      const before = prev.relics.length;
+      if (next.relics.length > before) FX.ui('relic');
+      else if (next.hp > prev.hp) FX.ui('heal');
+    }
+
+    if (act.type === ACT.REST_CHOOSE && act.kind === 'heal') FX.ui('heal');
+
+    /* --- 结算 --- */
+    if (next && prev && prev.fsm !== 'VICTORY' && next.fsm === 'VICTORY') FX.ui('win');
+    if (next && prev && prev.fsm !== 'DEFEAT' && next.fsm === 'DEFEAT') FX.ui('lose');
+
+    /* --- 普通点击 --- */
+    if (!pb && act.type !== ACT.START) FX.ui('click');
+  }
+
   /* ---------------- 存档 ---------------- */
   function save() {
     if (!S || S.fsm === 'VICTORY' || S.fsm === 'DEFEAT' || S.fsm === 'TITLE') {
@@ -1431,7 +1900,7 @@ if (typeof window !== 'undefined') window.CORE = CORE;
   function render() {
     const app = document.getElementById('app');
     app.innerHTML = '';
-    if (!S || S.fsm === 'TITLE') { app.appendChild(renderTitle()); return; }
+    if (!S || S.fsm === 'TITLE') { FX.clear(); app.appendChild(renderTitle()); return; }
     let scr;
     switch (S.fsm) {
       case 'MAP': scr = renderMap(); break;
@@ -1444,6 +1913,8 @@ if (typeof window !== 'undefined') window.CORE = CORE;
       case 'DEFEAT': scr = renderEnd(false); break;
       default: scr = renderTitle(); break;
     }
+    /* 离开战斗后不留残影 */
+    if (S.fsm !== 'BATTLE') FX.clear();
     app.appendChild(scr);
   }
 
