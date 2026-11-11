@@ -1,0 +1,1472 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,maximum-scale=1,user-scalable=no">
+<meta name="theme-color" content="#0a0c11">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>期末迷宫 · 光电系肉鸽</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{height:100%}
+body{
+  background:#0a0c11;
+  color:#dfe7f1;
+  font:14px/1.6 "Noto Sans SC","Microsoft YaHei",system-ui,-apple-system,sans-serif;
+  overflow:hidden;
+}
+body::before{
+  content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
+  background:
+    radial-gradient(900px 500px at 50% -10%, rgba(60,110,180,.16), transparent 70%),
+    radial-gradient(700px 400px at 90% 110%, rgba(150,90,40,.10), transparent 70%);
+}
+#app{position:relative;z-index:1;height:100%;max-width:560px;margin:0 auto;
+  display:flex;flex-direction:column;overflow:hidden}
+
+.screen{flex:1;display:flex;flex-direction:column;min-height:0;padding:10px 12px 12px}
+.screen.title-screen{justify-content:center;align-items:center;padding:24px}
+
+/* ---- 顶栏 ---- */
+.topbar{display:flex;align-items:center;justify-content:space-between;flex-shrink:0;gap:8px}
+.tb-left{font-size:15px;color:#e8eef7;display:flex;align-items:baseline;gap:2px}
+.tb-left b{font-size:19px;font-weight:800;color:#f0a83c}
+.tb-left span{font-size:12px;color:#6d7f96}
+.tb-left .blk{margin-left:6px;font-style:normal;font-size:11px;color:#7fb4f0;
+  border:1px solid #2a4a72;border-radius:5px;padding:0 4px}
+.tb-mid{font-size:11px;color:#5f7189;letter-spacing:1px}
+.tb-right{font-size:10px;color:#4d5d72;font-family:ui-monospace,Menlo,monospace;
+  max-width:38%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+.hpwrap{flex-shrink:0;margin:6px 0 8px}
+.hpbar{height:4px;border-radius:2px;background:#1a2230;overflow:hidden}
+.hpbar i{display:block;height:100%;border-radius:2px;transition:width .22s ease}
+
+/* ---- 遗物 ---- */
+.relics{display:flex;gap:6px;flex-wrap:wrap;flex-shrink:0;margin-bottom:8px}
+.relics.empty{height:0;margin:0}
+.relic{font-size:10px;color:#c7a76a;background:rgba(120,95,45,.16);
+  border:1px solid #4a3d22;border-radius:5px;padding:2px 6px;cursor:help}
+
+/* ---- 地图 ---- */
+.maplist{flex:1;display:flex;flex-direction:column;gap:8px;justify-content:center;padding:4px 0}
+.mapnode{display:flex;align-items:center;gap:11px;padding:11px 12px;border-radius:12px;
+  border:1px solid #1e2734;background:linear-gradient(180deg,#111823,#0d131b);cursor:pointer;
+  transition:transform .12s,border-color .12s,background .12s}
+.mapnode:active{transform:scale(.985)}
+.mapnode:hover{border-color:#33465f;background:linear-gradient(180deg,#141d29,#0f151d)}
+.mapnode.elite{border-color:#4a3a1c;background:linear-gradient(180deg,#1a1610,#0f131b)}
+.mapnode.elite:hover{border-color:#8a6a2a}
+.mapnode.boss{border-color:#5c2230;background:linear-gradient(180deg,#1e1016,#120f16)}
+.mapnode.boss:hover{border-color:#a03a4a}
+.mapnode.event{border-color:#22303f}
+.mn-ic{width:34px;height:34px;flex-shrink:0;border-radius:9px;display:grid;place-items:center;
+  font-size:16px;background:#151d28;border:1px solid #232f40;color:#8ba6c6}
+.mapnode.elite .mn-ic{background:#1e1910;border-color:#4a3a1c;color:#d8ab4e}
+.mapnode.boss .mn-ic{background:#22121a;border-color:#5c2230;color:#e2687a}
+.mapnode.event .mn-ic{color:#8fa3ba}
+.mn-tx{flex:1;min-width:0}
+.mn-t{font-size:14px;font-weight:600;letter-spacing:.5px}
+.mn-d{font-size:11px;color:#63758c;margin-top:1px}
+.mn-enemies{display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end;max-width:44%}
+.etag{font-size:10px;color:#93a5bb;background:#151d28;border:1px solid #232f40;
+  border-radius:4px;padding:1px 4px;white-space:nowrap}
+.hintline{flex-shrink:0;text-align:center;font-size:11px;color:#48586b;padding-top:6px}
+
+/* ---- 战斗 ---- */
+.screen.battle{padding:8px 10px 10px}
+.arena{flex:1;display:flex;align-items:center;justify-content:center;gap:14px;min-height:0;padding:4px 0}
+.hero{width:74px;flex-shrink:0;text-align:center}
+.hero .pa{font-size:40px;line-height:1.1;color:#8fc0ff;
+  filter:drop-shadow(0 0 14px rgba(100,160,255,.55))}
+.hero .pn{font-size:10px;color:#5f7189;letter-spacing:2px;margin-top:2px}
+.hero .bstr{font-size:9px;color:#d8ab4e;margin-top:3px}
+.enemies{display:flex;align-items:center;justify-content:center;gap:9px;
+  flex-wrap:wrap;min-height:0}
+.enemy{width:122px;border-radius:13px;border:1px solid #26313f;
+  background:linear-gradient(180deg,#121a24,#0c1219);padding:9px 7px 7px;
+  text-align:center;cursor:pointer;transition:border-color .12s,transform .12s}
+.enemy.targetable:hover{border-color:#c0443a;transform:translateY(-2px)}
+.enemy .intent{font-size:12px;font-weight:700;color:#f0c674;min-height:17px;white-space:nowrap}
+.enemy .av{font-size:30px;line-height:1.2;color:#a8bdd6}
+.enemy .en{font-size:11.5px;font-weight:600;color:#c8d6e6;margin-top:2px;line-height:1.3}
+.enemy .ehp{font-size:10px;color:#8ba0bb;margin-top:3px}
+.enemy .ehpbar{height:3px;border-radius:2px;background:#1a2230;overflow:hidden;margin-top:3px}
+.enemy .ehpbar i{display:block;height:100%;background:linear-gradient(90deg,#a83a3a,#d9564e);
+  border-radius:2px;transition:width .2s}
+.echips{display:flex;gap:3px;justify-content:center;margin-top:3px;flex-wrap:wrap}
+.ec{font-size:9px;color:#e8a33d;background:rgba(150,105,40,.18);border-radius:3px;padding:0 3px}
+
+.log{flex-shrink:0;height:48px;overflow:hidden;font-size:10px;line-height:16px;
+  color:#5c6e85;border-top:1px solid #141c26;padding-top:4px}
+
+.hand{flex-shrink:0;display:flex;gap:7px;overflow-x:auto;overflow-y:hidden;
+  padding:12px 2px 4px;height:176px;scrollbar-width:none}
+.hand::-webkit-scrollbar{display:none}
+.card{width:100px;min-width:100px;height:150px;border-radius:10px;border:1px solid #2c3d57;
+  background:linear-gradient(180deg,#1a2434,#111823);padding:10px 7px 6px;position:relative;
+  display:flex;flex-direction:column;cursor:pointer;transition:transform .12s,border-color .12s}
+.card:active{transform:translateY(-4px)}
+.card.sel{transform:translateY(-10px);box-shadow:0 0 0 2px #f0c674,0 6px 18px rgba(240,198,116,.25)}
+.card.poor{opacity:.45}
+.card .cost{position:absolute;top:-7px;left:-7px;width:23px;height:23px;border-radius:50%;
+  background:linear-gradient(180deg,#2d5b8e,#1b3a5f);display:grid;place-items:center;
+  font-size:12px;font-weight:700;color:#dceaff;border:1px solid #4d7ab0}
+.card .nm{font-size:12px;font-weight:700;text-align:center;letter-spacing:.5px;line-height:1.25;flex-shrink:0}
+.card .tx{font-size:9.5px;line-height:1.4;color:#9db2cb;margin-top:3px;flex:1;
+  text-align:center;overflow:hidden}
+.card .ttag{font-size:9px;text-align:center;padding:1px 0;border-radius:4px;letter-spacing:1px;flex-shrink:0}
+.card .ttag.atk{color:#e08a72;background:rgba(140,60,40,.2)}
+.card .ttag.skl{color:#7fb4f0;background:rgba(50,90,140,.2)}
+.card .ttag.pow{color:#c7a76a;background:rgba(120,95,45,.2)}
+
+.battlefoot{flex-shrink:0;display:flex;align-items:center;gap:8px;padding-top:6px}
+.nrg{font-size:13px;font-weight:700;color:#f0c674;flex-shrink:0}
+.bhint{flex:1;font-size:11px;color:#4d5d72;text-align:center}
+.btn.big,.btn.endturn{padding:9px 16px;font-size:13px}
+
+/* ---- 通用按钮 ---- */
+.btn{border:1px solid #2c3d57;background:linear-gradient(180deg,#182230,#111823);
+  color:#cfdcea;border-radius:10px;padding:11px 15px;font-size:14px;cursor:pointer;
+  font-family:inherit;transition:border-color .12s,transform .1s;flex-shrink:0}
+.btn:hover{border-color:#3d5573}
+.btn:active{transform:scale(.98)}
+.btn:disabled{opacity:.45;cursor:default}
+.btn.primary{border-color:#7a5a1e;background:linear-gradient(180deg,#2a2010,#1a140c);
+  color:#f2c569;font-weight:700;letter-spacing:2px}
+.btn.primary:hover{border-color:#a87c26}
+.btnrow{display:flex;gap:9px;width:100%}
+
+/* ---- 标题 ---- */
+.title-box{text-align:center;margin-bottom:22px}
+.logo{font-size:42px;font-weight:800;letter-spacing:6px;color:#eef3fa;
+  text-shadow:0 0 28px rgba(100,160,255,.28)}
+.logo em{font-style:normal;color:#f0a83c;text-shadow:0 0 26px rgba(240,168,60,.42)}
+.sub{font-size:10px;letter-spacing:3px;color:#5f7189;margin-top:6px}
+.desc{font-size:12px;line-height:2;color:#7d8fa4;margin-top:20px}
+.seedbox{width:100%;max-width:320px}
+.seedlabel{font-size:10px;color:#5f7189;letter-spacing:1px;margin-bottom:6px;text-align:center}
+.seedinput{width:100%;background:#0f1620;border:1px solid #22303f;border-radius:9px;
+  color:#cfdcea;padding:10px 12px;font-size:13px;font-family:ui-monospace,Menlo,monospace;
+  text-align:center;letter-spacing:1px;margin-bottom:12px;outline:none}
+.seedinput:focus{border-color:#3d5573}
+.bestline{font-size:11px;color:#4d5d72;margin-top:16px}
+.titlefoot{font-size:10px;color:#3a4757;margin-top:8px;letter-spacing:1px}
+
+/* ---- 奖励 ---- */
+.ptitle{font-size:16px;font-weight:700;color:#f0c674;letter-spacing:2px;
+  margin:14px 0 12px;flex-shrink:0}
+.offerlist{flex:1;display:flex;flex-direction:column;gap:9px;min-height:0}
+.offer{border:1px solid #22303f;border-radius:11px;padding:12px 13px;cursor:pointer;
+  background:linear-gradient(180deg,#111823,#0d131b);transition:border-color .12s}
+.offer:hover{border-color:#3d5573;background:linear-gradient(180deg,#141d29,#0f151d)}
+.onm{font-size:14px;font-weight:700;color:#e2ecf7}
+.oc{font-style:normal;font-size:10px;color:#7fb4f0;background:rgba(50,90,140,.24);
+  border-radius:4px;padding:1px 5px;margin-left:7px;vertical-align:middle}
+.od{font-size:11px;color:#7d8fa4;margin-top:4px;line-height:1.6}
+
+/* ---- 事件 / 营地 ---- */
+.evbox{flex-shrink:0;margin:8px 0 14px}
+.evt{font-size:17px;font-weight:700;color:#f0c674;letter-spacing:2px}
+.evd{font-size:12.5px;line-height:1.95;color:#93a5bb;margin-top:9px}
+.evopts{flex:1;display:flex;flex-direction:column;gap:9px;min-height:0}
+.evopt{border:1px solid #22303f;border-radius:11px;padding:12px 13px;cursor:pointer;
+  background:linear-gradient(180deg,#111823,#0d131b);transition:border-color .12s}
+.evopt:hover{border-color:#3d5573}
+.evo-t{font-size:14px;font-weight:600;color:#dfe7f1}
+.evo-d{font-size:11px;color:#7d8fa4;margin-top:3px}
+.evres{flex:1;display:flex;flex-direction:column;gap:7px;justify-content:center}
+.evr{font-size:13px;color:#9ec9f0;border-left:2px solid #2a4a72;padding-left:10px}
+
+/* ---- 结算 ---- */
+.screen.end{justify-content:center;align-items:center;padding:24px}
+.endbox{text-align:center;margin-bottom:24px}
+.endt{font-size:32px;font-weight:800;letter-spacing:8px}
+.endt.win{color:#7fe0a8;text-shadow:0 0 30px rgba(90,220,150,.35)}
+.endt.lose{color:#e2687a;text-shadow:0 0 30px rgba(220,80,100,.3)}
+.ends{font-size:12px;color:#63758c;margin-top:8px}
+.endstats{width:100%;max-width:330px;border:1px solid #1e2734;border-radius:12px;
+  padding:6px 14px;background:linear-gradient(180deg,#111823,#0d131b);margin-bottom:20px}
+.esrow{display:flex;justify-content:space-between;padding:8px 0;
+  border-bottom:1px solid #161e28;font-size:12.5px}
+.esrow:last-child{border-bottom:none}
+.esk{color:#63758c}
+.esv{color:#dfe7f1;font-weight:600;font-family:ui-monospace,Menlo,monospace}
+
+@media (max-height:700px){
+  .card{height:124px}
+  .hand{height:150px}
+  .desc{margin-top:12px;line-height:1.8}
+  .logo{font-size:34px}
+}
+</style>
+
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="application-name" content="期末迷宫">
+<meta name="apple-mobile-web-app-title" content="期末迷宫">
+<meta name="description" content="光电系肉鸽卡牌：用物理定律躲避期末周。同一种子同牌序，比分数不比手速。">
+<link rel="icon" href="icons/icon-192.png">
+</head>
+<body>
+<div id="app"></div>
+<script>
+'use strict';
+/* ============================================================
+   期末迷宫 · CORE
+   ------------------------------------------------------------
+   纯函数层。本文件不触碰 DOM / localStorage / Date / Math.random。
+   规则：
+     · 所有 reducer 形如 reduce(state, action) -> state
+     · 输入 state 永不被修改（入口统一 clone）
+     · 随机数一律来自 state.rng，纯函数推进
+   ============================================================ */
+
+/* ---------- 1. 确定性随机 ---------- */
+const RNG = {
+  next(s) {
+    let t = (s + 0x6D2B79F5) >>> 0;
+    let r = Math.imul(t ^ (t >>> 15), t | 1);
+    r ^= r + Math.imul(r ^ (r >>> 7), r | 61);
+    return { s: t, v: ((r ^ (r >>> 14)) >>> 0) / 4294967296 };
+  },
+  int(s, n) {
+    const x = RNG.next(s);
+    return { s: x.s, v: Math.floor(x.v * n) };
+  },
+  chance(s, pct) {
+    const x = RNG.next(s);
+    return { s: x.s, ok: x.v * 100 < pct };
+  },
+  shuffle(s, arr) {
+    const a = arr.slice();
+    let st = s;
+    for (let i = a.length - 1; i > 0; i--) {
+      const r = RNG.int(st, i + 1);
+      st = r.s;
+      const tmp = a[i]; a[i] = a[r.v]; a[r.v] = tmp;
+    }
+    return { s: st, a: a };
+  },
+  pick(s, arr) {
+    const r = RNG.int(s, arr.length);
+    return { s: r.s, v: arr[r.v] };
+  }
+};
+
+function hashStr(str) {
+  let h = 2166136261 >>> 0;
+  for (let i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i);
+    h = Math.imul(h, 16777619) >>> 0;
+  }
+  return h >>> 0;
+}
+
+/* ---------- 2. 内容：卡牌 ---------- */
+/* t: atk 攻击 / skl 技能 / pow 能力   c: 费用   q: 品质 0基础 1普通 2稀有 */
+const CARDS = {
+  photo:     {n:'光电效应', t:'atk', c:1, q:0, d:'造成 6 点伤害。若目标已「曝光」，改为 12 点并清除曝光。', ops:[{k:'dmg',v:6,exp:12,clearExp:1}]},
+  laser:     {n:'激光脉冲', t:'atk', c:2, q:1, d:'造成 13 点伤害。', ops:[{k:'dmg',v:13}]},
+  tunnel:    {n:'量子隧穿', t:'atk', c:1, q:1, d:'造成 8 点伤害，无视格挡。', ops:[{k:'dmg',v:8,pierce:1}]},
+  reflect:   {n:'全反射',   t:'atk', c:1, q:1, d:'造成 7 点伤害，获得 5 点格挡。', ops:[{k:'dmg',v:7},{k:'block',v:5}]},
+  compton:   {n:'康普顿散射', t:'atk', c:1, q:1, d:'造成 5 点伤害，抽 1 张牌。', ops:[{k:'dmg',v:5},{k:'draw',v:1}]},
+  diffract:  {n:'衍射',     t:'atk', c:2, q:2, d:'对所有敌人造成 6 点伤害。', ops:[{k:'dmg',v:6,all:1}]},
+  doppler:   {n:'多普勒效应', t:'atk', c:2, q:2, d:'造成 4 点伤害，本回合每打出过一张牌再 +4。', ops:[{k:'dmg',v:4,perPlayed:4}]},
+  fusion:    {n:'核聚变',   t:'atk', c:3, q:2, d:'造成 22 点伤害，自身失去 6 点生命。', ops:[{k:'dmg',v:22},{k:'lose',v:6}]},
+  emp:       {n:'电磁脉冲', t:'atk', c:2, q:2, d:'造成 8 点伤害，目标失去 2 点力量。', ops:[{k:'dmg',v:8},{k:'edebuff',v:{str:-2}}]},
+  lorentz:   {n:'洛伦兹力', t:'atk', c:1, q:1, d:'造成 6 点伤害，目标下回合攻击 -4。', ops:[{k:'dmg',v:6},{k:'edebuff',v:{charge:-4}}]},
+  einstein:  {n:'质能方程', t:'atk', c:2, q:2, d:'失去 10% 最大生命，造成 16 点伤害。', ops:[{k:'losePct',v:10},{k:'dmg',v:16}]},
+  chain:     {n:'链式反应', t:'atk', c:2, q:2, d:'造成 8 点伤害。若击杀目标，对所有敌人再造成 10 点伤害。', ops:[{k:'dmg',v:8,chain:10}]},
+  blackhole: {n:'黑洞',     t:'atk', c:3, q:2, d:'造成 30 点伤害，自身失去 10 点生命。消耗。', ops:[{k:'dmg',v:30},{k:'lose',v:10}], ex:1},
+
+  semi:      {n:'半导体',   t:'skl', c:1, q:0, d:'获得 7 点格挡。', ops:[{k:'block',v:7}]},
+  polarizer: {n:'偏振片',   t:'skl', c:1, q:1, d:'获得 6 点格挡，下次受到的伤害减半。', ops:[{k:'block',v:6},{k:'buff',v:{polar:1}}]},
+  fiber:     {n:'光纤',     t:'skl', c:1, q:1, d:'抽 2 张牌。', ops:[{k:'draw',v:2}]},
+  supercon:  {n:'超导',     t:'skl', c:2, q:2, d:'获得 13 点格挡，本回合 +1 能量。', ops:[{k:'block',v:13},{k:'energy',v:1}]},
+  cat:       {n:'薛定谔的猫', t:'skl', c:1, q:2, d:'50% 获得 12 点格挡；50% 失去 4 点生命。', ops:[{k:'gamble',pct:50,ok:{block:12},bad:{lose:4}}]},
+  interfere: {n:'干涉',     t:'skl', c:1, q:2, d:'复制手牌中随机一张牌，加入手牌。消耗。', ops:[{k:'copyHand'}], ex:1},
+  fourier:   {n:'傅里叶变换', t:'skl', c:1, q:1, d:'弃掉所有手牌，然后抽同样数量 +1 张。', ops:[{k:'sift'}]},
+  maxwell:   {n:'麦克斯韦方程', t:'skl', c:1, q:2, d:'获得 2 点能量，抽 1 张牌。消耗。', ops:[{k:'energy',v:2},{k:'draw',v:1}], ex:1},
+
+  entropy:   {n:'热力学第二定律', t:'pow', c:1, q:2, d:'此后每回合开始获得 2 点格挡，但失去 2 点生命。', ops:[{k:'buff',v:{entropy:1}}]},
+  focus:     {n:'聚焦',     t:'pow', c:1, q:1, d:'永久获得 2 点力量。', ops:[{k:'buff',v:{str:2}}]},
+  mirror:    {n:'反射镜',   t:'pow', c:1, q:2, d:'永久获得 4 点荆棘（受击反弹）。', ops:[{k:'buff',v:{thorns:4}}]}
+};
+
+const STARTER = ['photo','photo','photo','photo','photo','semi','semi','semi','semi','fiber'];
+
+/* ---------- 3. 内容：敌人 ---------- */
+const ENEMIES = {
+  interferer: {n:'干扰源', ic:'~', hp:20, mv:[{a:6},{a:3,db:{weak:2}}]},
+  emwave:     {n:'强电磁干扰', ic:'≈', hp:28, mv:[{a:5,bl:8},{a:9}]},
+  ghost:      {n:'挂科幽灵', ic:'☁', hp:32, mv:[{a:7,db:{weak:2}},{a:11}]},
+  tutor:      {n:'催报告的导师', ic:'✎', hp:36, mv:[{a:9},{a:6,db:{fatigue:2}},{a:6}]},
+  dean:       {n:'教务处', ic:'⌂', hp:58, el:1, mv:[{a:6,times:2},{a:10,db:{weak:2}},{bl:12}]},
+  gpa:        {n:'绩点大魔王', ic:'♛', hp:64, el:1, mv:[{a:8},{sf:{str:3}},{a:14}]},
+  committee:  {n:'期末答辩委员会', ic:'⚑', hp:96, boss:1, mv:[{a:11},{a:6,times:2},{a:14,db:{vuln:2}},{bl:10,sf:{str:2}}]}
+};
+
+/* ---------- 4. 内容：遗物 ---------- */
+const RELICS = {
+  calculator:  {n:'计算器', d:'每场战斗开始时抽 1 张牌'},
+  template:    {n:'实验报告模板', d:'每场战斗打出的第一张牌不消耗能量'},
+  coffee:      {n:'咖啡杯', d:'每回合 +1 能量，但每 3 回合失去 3 点生命'},
+  studentcard: {n:'学生证', d:'受到的所有伤害 -1'},
+  laserpen:    {n:'激光笔', d:'攻击牌伤害 +1'},
+  luckcoin:    {n:'幸运币', d:'每场战斗胜利回复 4 点生命'}
+};
+
+/* ---------- 5. 内容：事件 ---------- */
+const EVENTS = {
+  tutor: {
+    n:'导师办公室',
+    d:'「这份报告的格式不太对。」导师推了推眼镜，指着一页图表，「重做吧。」',
+    op:[
+      {t:'低头认错', d:'失去 6 点生命，获得一张稀有卡', eff:{lose:6, card:2}},
+      {t:'据理力争', d:'50% 获得稀有卡，50% 失去 12 点生命', eff:{gamble:{pct:50, ok:{card:2}, bad:{lose:12}}}},
+      {t:'借口离开', d:'失去 4 点生命，恢复 8 点生命', eff:{lose:4, heal:8}}
+    ]
+  },
+  library: {
+    n:'深夜图书馆',
+    d:'闭馆广播已经响过两遍，四楼只剩你一个。桌上的咖啡凉了。',
+    op:[
+      {t:'通宵刷题', d:'失去 8 点生命，获得一张卡', eff:{lose:8, card:1}},
+      {t:'趴在桌上睡', d:'回复 14 点生命', eff:{heal:14}},
+      {t:'翻别人的笔记', d:'获得随机遗物，30% 被记恨（失 10 生命）', eff:{gamble:{pct:70, ok:{relic:1}, bad:{relic:1, lose:10}}}}
+    ]
+  },
+  lab: {
+    n:'凌晨的实验室',
+    d:'示波器还亮着。柜子没锁，里面是上一届学长留下的器材。',
+    op:[
+      {t:'偷偷用一下', d:'获得遗物，40% 触电失 8 生命', eff:{gamble:{pct:60, ok:{relic:1}, bad:{relic:1, lose:8}}}},
+      {t:'原样放回', d:'回复 6 点生命', eff:{heal:6}}
+    ]
+  },
+  canteen: {
+    n:'食堂三楼',
+    d:'阿姨今天多打了半勺肉。「多吃点，看你瘦的。」',
+    op:[
+      {t:'加餐', d:'回复 18 点生命', eff:{heal:18}},
+      {t:'把肉留给室友', d:'最大生命 +6', eff:{maxHp:6}}
+    ]
+  },
+  track: {
+    n:'操场',
+    d:'晚上十点，跑道上没几个人。风挺大。',
+    op:[
+      {t:'跑五圈', d:'最大生命 +5，失去 4 点生命', eff:{maxHp:5, lose:4}},
+      {t:'坐在看台发呆', d:'抽到的下一张卡品质更好', eff:{card:1}}
+    ]
+  }
+};
+
+/* ---------- 6. 工具 ---------- */
+function clone(o) { return JSON.parse(JSON.stringify(o)); }
+function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+
+function reap(state) {
+  /* 卡牌实例化：{id, uid} */
+  const deck = [];
+  for (const id of state.deckIds) deck.push({ id, uid: state.nuid++ });
+  return { deck, draw: [], discard: [], exhaust: [], hand: [] };
+}
+
+/* ---------- 7. 状态构造 ---------- */
+function initialState(seed, mode) {
+  return {
+    v: 1,
+    seed: seed >>> 0,
+    rng: (seed >>> 0) ^ 0x9E3779B9,
+    mode: mode || 'normal',
+    fsm: 'TITLE',
+    floor: 0,
+    hp: 80, maxHp: 80,
+    deckIds: STARTER.slice(),
+    relics: [],
+    nuid: 1,
+    map: null,
+    node: null,
+    battle: null,
+    offers: null,
+    event: null,
+    eventResult: null,
+    log: [],
+    pending: null,
+    score: 0,
+    playsThisTurn: 0
+  };
+}
+
+/* ---------- 8. 战斗构建 ---------- */
+function makeEnemy(id, nuid) {
+  const def = ENEMIES[id];
+  return {
+    uid: nuid, id,
+    hp: def.hp, maxHp: def.hp,
+    block: 0,
+    str: 0, weak: 0, vuln: 0, expose: 0, charge: 0,
+    turn: 0,
+    intent: null
+  };
+}
+
+function rollIntent(state, e) {
+  const def = ENEMIES[e.id];
+  const mv = def.mv;
+  if (mv.length === 1) return mv[0];
+  const idx = e.turn === 0 ? 0 : (1 + ((e.turn - 1) % (mv.length - 1)));
+  return mv[idx % mv.length];
+}
+
+function startBattle(state, enemyIds) {
+  const s = clone(state);
+  const b = reap(s);
+  s.battle = {
+    enemies: [],
+    hand: [], draw: [], discard: [], exhaust: [],
+    energy: 0, maxEnergy: 3, turn: 0,
+    sel: -1, busy: false, playedTotal: 0,
+    firstPlayFree: s.relics.indexOf('template') >= 0
+  };
+  let uid = s.nuid;
+  for (const id of enemyIds) s.battle.enemies.push(makeEnemy(id, uid++));
+  s.nuid = uid;
+
+  const sh = RNG.shuffle(s.rng, b.deck);
+  s.rng = sh.s;
+  s.battle.draw = sh.a;
+  s.fsm = 'BATTLE';
+  s.playsThisTurn = 0;
+  return beginPlayerTurn(s, true);
+}
+
+function beginPlayerTurn(s, isFirst) {
+  const b = s.battle;
+  b.turn++;
+  b.energy = b.maxEnergy;
+  if (s.relics.indexOf('coffee') >= 0) {
+    b.energy += 1;
+    if (b.turn % 3 === 0) {
+      s.hp = Math.max(1, s.hp - 3);
+      b.log = (b.log || []).concat('咖啡因反噬：-3 生命');
+    }
+  }
+  b.block = 0;
+  if (s.playerBuffs && s.playerBuffs.entropy > 0) {
+    b.block += 2 * s.playerBuffs.entropy;
+    s.hp = Math.max(1, s.hp - 2 * s.playerBuffs.entropy);
+  }
+  if (s.playerBuffs) {
+    for (const k of ['vuln', 'weak', 'fatigue']) {
+      if (s.playerBuffs[k] > 0) s.playerBuffs[k]--;
+    }
+  }
+  draw(s, 5 + (isFirst && s.relics.indexOf('calculator') >= 0 ? 1 : 0));
+  for (const e of b.enemies) {
+    if (e.hp > 0) {
+      e.block = 0;
+      e.intent = rollIntent(s, e);
+      e.turn++;
+    }
+  }
+  b.sel = -1;
+  b.busy = false;
+  s.playsThisTurn = 0;
+  return s;
+}
+
+function draw(s, n) {
+  const b = s.battle;
+  for (let i = 0; i < n; i++) {
+    if (b.hand.length >= 10) return;
+    if (!b.draw.length) {
+      if (!b.discard.length) return;
+      const sh = RNG.shuffle(s.rng, b.discard);
+      s.rng = sh.s;
+      b.draw = sh.a;
+      b.discard = [];
+    }
+    b.hand.push(b.draw.pop());
+  }
+}
+
+/* ---------- 9. 伤害计算（纯函数，可单测） ---------- */
+function damageOf(srcStr, srcWeak, srcVuln, base, tgtVuln, relics) {
+  let d = base + (srcStr || 0);
+  if (srcWeak > 0) d = Math.floor(d * 0.75);
+  if (tgtVuln > 0) d = Math.floor(d * 1.5);
+  if (relics && relics.indexOf('laserpen') >= 0) d += 1;
+  return Math.max(0, d);
+}
+
+function applyDamage(s, target, amount, pierce) {
+  const b = s.battle;
+  let dmg = Math.max(0, amount);
+  if (target === 'player') {
+    if (s.relics.indexOf('studentcard') >= 0) dmg = Math.max(0, dmg - 1);
+    if (s.playerPolar) { dmg = Math.floor(dmg / 2); s.playerPolar = 0; }
+    const absorbed = pierce ? 0 : Math.min(b.block, dmg);
+    b.block -= absorbed;
+    const real = dmg - absorbed;
+    s.hp = Math.max(0, s.hp - real);
+    if (s.playerBuffs && s.playerBuffs.thorns > 0 && s._lastAttacker) {
+      const att = b.enemies.find(e => e.uid === s._lastAttacker);
+      if (att) att.hp = Math.max(0, att.hp - s.playerBuffs.thorns);
+    }
+    return real;
+  }
+  const absorbed = pierce ? 0 : Math.min(target.block, dmg);
+  target.block -= absorbed;
+  target.hp = Math.max(0, target.hp - (dmg - absorbed));
+  return dmg - absorbed;
+}
+
+/* ---------- 10. 打出卡牌 ---------- */
+function playCard(state, handIdx, targetUid) {
+  const s = clone(state);
+  const b = s.battle;
+  if (!b || b.busy) return state;
+  const inst = b.hand[handIdx];
+  if (!inst) return state;
+  const card = CARDS[inst.id];
+  if (!card) return state;
+
+  let cost = card.c;
+  if (b.firstPlayFree && b.playedTotal === 0) cost = 0;
+  if (b.energy < cost) return state;
+
+  const needsTarget = card.ops.some(o => o.k === 'dmg' && !o.all) || card.ops.some(o => o.k === 'edebuff');
+  let target = null;
+  if (needsTarget) {
+    target = b.enemies.find(e => e.uid === targetUid && e.hp > 0);
+    if (!target) {
+      const alive = b.enemies.filter(e => e.hp > 0);
+      if (alive.length === 1) target = alive[0];
+      else return state;
+    }
+  }
+
+  b.energy -= cost;
+  b.playedTotal++;
+  s.playsThisTurn++;
+  b.hand.splice(handIdx, 1);
+  b.log = b.log || [];
+  b.log.push('你打出「' + card.n + '」');
+
+  for (const op of card.ops) execOp(s, op, target);
+
+  if (card.ex) b.exhaust.push(inst);
+  else b.discard.push(inst);
+
+  b.sel = -1;
+  return afterAction(s);
+}
+
+function execOp(s, op, target) {
+  const b = s.battle;
+  switch (op.k) {
+    case 'dmg': {
+      let base = op.v;
+      if (op.perPlayed) base += op.perPlayed * (s.playsThisTurn - 1);
+      if (op.all) {
+        for (const e of b.enemies) {
+          if (e.hp <= 0) continue;
+          const d = damageOf(s.playerStr || 0, 0, 0, base, e.vuln, s.relics);
+          applyDamage(s, e, d);
+        }
+      } else if (target) {
+        let base2 = base;
+        if (op.exp && target.expose > 0) {
+          base2 = op.exp;
+          if (op.clearExp) target.expose = 0;
+        }
+        const d = damageOf(s.playerStr || 0, 0, 0, base2, target.vuln, s.relics);
+        const real = applyDamage(s, target, d, op.pierce);
+        if (op.chain && target.hp <= 0) {
+          for (const e of b.enemies) {
+            if (e.hp > 0) applyDamage(s, e, damageOf(s.playerStr || 0, 0, 0, op.chain, e.vuln, s.relics));
+          }
+        }
+      }
+      break;
+    }
+    case 'block': b.block += op.v; break;
+    case 'draw': draw(s, op.v); break;
+    case 'energy': b.energy += op.v; break;
+    case 'heal': s.hp = Math.min(s.maxHp, s.hp + op.v); break;
+    case 'lose': s.hp = Math.max(0, s.hp - op.v); break;
+    case 'losePct': s.hp = Math.max(0, s.hp - Math.round(s.maxHp * op.v / 100)); break;
+    case 'buff': {
+      s.playerBuffs = s.playerBuffs || {str:0, thorns:0, entropy:0};
+      for (const k in op.v) {
+        s.playerBuffs[k] = (s.playerBuffs[k] || 0) + op.v[k];
+        if (k === 'str') s.playerStr = (s.playerStr || 0) + op.v[k];
+      }
+      break;
+    }
+    case 'edebuff':
+      if (target) {
+        for (const k in op.v) {
+          if (k === 'str') target.str = Math.max(-5, (target.str || 0) + op.v[k]);
+          else if (k === 'charge') target.charge = (target.charge || 0) + Math.abs(op.v[k]);
+          else target[k] = Math.max(0, (target[k] || 0) + op.v[k]);
+        }
+      }
+      break;
+    case 'gamble': {
+      const g = RNG.chance(s.rng, op.pct);
+      s.rng = g.s;
+      const eff = g.ok ? op.ok : op.bad;
+      if (eff.block) b.block += eff.block;
+      if (eff.lose) s.hp = Math.max(0, s.hp - eff.lose);
+      break;
+    }
+    case 'copyHand': {
+      if (b.hand.length && b.hand.length < 10) {
+        const r = RNG.int(s.rng, b.hand.length);
+        s.rng = r.s;
+        const src = b.hand[r.v];
+        b.hand.push({ id: src.id, uid: s.nuid++ });
+      }
+      break;
+    }
+    case 'sift': {
+      const n = b.hand.length;
+      b.discard = b.discard.concat(b.hand);
+      b.hand = [];
+      draw(s, n + 1);
+      break;
+    }
+    case 'polar':
+      s.playerPolar = 1;
+      break;
+  }
+}
+
+function afterAction(s) {
+  const b = s.battle;
+  if (aliveCount(b) === 0) return winBattle(s);
+  if (s.hp <= 0) return defeat(s);
+  return s;
+}
+
+function aliveCount(b) { return b.enemies.filter(e => e.hp > 0).length; }
+
+/* ---------- 11. 结束回合 / 敌人行动 ---------- */
+function endTurn(state) {
+  const s = clone(state);
+  const b = s.battle;
+  if (!b || b.busy) return state;
+  b.busy = true;
+  b.sel = -1;
+  b.discard = b.discard.concat(b.hand);
+  b.hand = [];
+  const step = (st, i) => {
+    if (!st.battle) return st;
+    if (i >= st.battle.enemies.length) return beginPlayerTurn(st, false);
+    const e = st.battle.enemies[i];
+    if (e.hp <= 0) return step(st, i + 1);
+    return actEnemy(st, e, () => step(st, i + 1));
+  };
+  const out = step(s, 0);
+  if (out.battle) out.battle.busy = false;
+  return afterAction(out);
+}
+
+function actEnemy(s, e, cont) {
+  const mv = e.intent || { a: 0 };
+  const b = s.battle;
+  b.log = b.log || [];
+  if (mv.a) {
+    let base = Math.max(0, (mv.a || 0) + (e.str || 0) - (e.charge || 0));
+    if (e.weak > 0) base = Math.floor(base * 0.75);
+    if (s.playerBuffs && s.playerBuffs.vuln > 0) base = Math.floor(base * 1.5);
+    const times = mv.times || 1;
+    for (let i = 0; i < times; i++) {
+      if (s.hp <= 0) break;
+      s._lastAttacker = e.uid;
+      applyDamage(s, 'player', base);
+    }
+    b.log.push(ENEMIES[e.id].n + ' 造成 ' + (base * times) + ' 伤害');
+  }
+  if (mv.bl) e.block += mv.bl;
+  if (mv.sf) for (const k in mv.sf) e[k] = (e[k] || 0) + mv.sf[k];
+  if (mv.db) {
+    s.playerBuffs = s.playerBuffs || { str: 0, thorns: 0, entropy: 0, vuln: 0, weak: 0, fatigue: 0 };
+    for (const k in mv.db) s.playerBuffs[k] = (s.playerBuffs[k] || 0) + mv.db[k];
+  }
+  e.charge = 0;
+  if (e.weak > 0) e.weak--;
+  if (e.vuln > 0) e.vuln--;
+  if (e.expose > 0) e.expose--;
+  return cont();
+}
+
+/* ---------- 12. 胜负与奖励 ---------- */
+function winBattle(s) {
+  const b = s.battle;
+  if (s.relics.indexOf('luckcoin') >= 0) s.hp = Math.min(s.maxHp, s.hp + 4);
+  s.battle = null;
+  s.score += 50 + Math.floor(s.hp);
+  s.lastWin = { floor: s.floor };
+  if (s.node && s.node.type === 'BOSS') {
+    s.fsm = 'VICTORY';
+    s.score += 1000 + s.hp * 10;
+    return s;
+  }
+  s.offers = rollOffers(s);
+  s.fsm = 'REWARD';
+  return s;
+}
+
+function defeat(s) {
+  s.battle = null;
+  s.fsm = 'DEFEAT';
+  return s;
+}
+
+function rollOffers(s) {
+  const q = s.node && s.node.type === 'ELITE' ? 2 : (s.floor <= 2 ? 1 : 1);
+  const pool = Object.keys(CARDS).filter(id => CARDS[id].q <= q);
+  const out = [];
+  const seen = {};
+  for (let i = 0; i < 3; i++) {
+    let id;
+    let tries = 0;
+    do {
+      const r = RNG.pick(s.rng, pool);
+      s.rng = r.s;
+      id = r.v;
+      tries++;
+    } while (seen[id] && tries < 20);
+    seen[id] = 1;
+    out.push(id);
+  }
+  return out;
+}
+
+/* ---------- 13. 地图 ---------- */
+function genMap(s) {
+  const floors = [];
+  const rngs = s.rng;
+  let r = rngs;
+  for (let f = 1; f <= 8; f++) {
+    const opts = [];
+    if (f === 8) {
+      opts.push({ type: 'BOSS', enemies: ['committee'] });
+    } else if (f <= 3) {
+      const types = f === 1 ? ['BATTLE', 'BATTLE', 'EVENT'] : ['BATTLE', 'EVENT', 'BATTLE'];
+      for (const t of types) opts.push(mkNode(s, t, f));
+    } else {
+      const types = [];
+      if (f === 4) types.push('ELITE', 'BATTLE', 'REST');
+      else if (f === 5) types.push('BATTLE', 'EVENT', 'ELITE');
+      else if (f === 6) types.push('BATTLE', 'REST', 'EVENT');
+      else types.push('ELITE', 'REST', 'BATTLE');
+      for (const t of types) opts.push(mkNode(s, t, f));
+    }
+    floors.push(opts);
+  }
+  s.rng = r;
+  return floors;
+}
+
+function mkNode(s, type, f) {
+  if (type === 'EVENT') {
+    const keys = Object.keys(EVENTS);
+    const r = RNG.pick(s.rng, keys);
+    s.rng = r.s;
+    return { type: 'EVENT', event: r.v };
+  }
+  if (type === 'REST') return { type: 'REST' };
+  if (type === 'ELITE') {
+    const pool = f <= 5 ? ['dean', 'gpa'] : ['gpa', 'dean'];
+    const r = RNG.pick(s.rng, pool);
+    s.rng = r.s;
+    return { type: 'ELITE', enemies: [r.v] };
+  }
+  const early = ['interferer', 'emwave'];
+  const mid = ['emwave', 'ghost', 'interferer'];
+  const pool = f <= 2 ? early : mid;
+  const n = f >= 6 ? 2 : 1;
+  const ids = [];
+  for (let i = 0; i < n; i++) {
+    const r = RNG.pick(s.rng, pool);
+    s.rng = r.s;
+    ids.push(r.v);
+  }
+  return { type: 'BATTLE', enemies: ids };
+}
+
+/* ---------- 14. Reducer（FSM 驱动） ---------- */
+const ACT = {
+  START: 'START', PICK_NODE: 'PICK_NODE', PLAY: 'PLAY', END_TURN: 'END_TURN',
+  TAKE_CARD: 'TAKE_CARD', SKIP_CARD: 'SKIP_CARD', EVENT_CHOOSE: 'EVENT_CHOOSE', EVENT_DONE: 'EVENT_DONE',
+  REST_CHOOSE: 'REST_CHOOSE', REMOVE_CARD: 'REMOVE_CARD', CONTINUE: 'CONTINUE'
+};
+
+function reduce(state, act) {
+  switch (act.type) {
+    case ACT.START: return startRun(state, act);
+    case ACT.PICK_NODE: return pickNode(state, act.floor, act.idx);
+    case ACT.PLAY: return playCard(state, act.hand, act.target);
+    case ACT.END_TURN: return endTurn(state);
+    case ACT.TAKE_CARD: return takeCard(state, act.id);
+    case ACT.SKIP_CARD: return skipCard(state);
+    case ACT.EVENT_CHOOSE: return eventChoose(state, act.idx);
+    case ACT.EVENT_DONE: return eventDone(state);
+    case ACT.REST_CHOOSE: return restChoose(state, act.kind);
+    case ACT.REMOVE_CARD: return removeCard(state, act.deckIdx);
+    case ACT.CONTINUE: return continueRun(state);
+    default: return state;
+  }
+}
+
+function startRun(state, act) {
+  const s = clone(state);
+  s.fsm = 'MAP';
+  s.floor = 1;
+  s.hp = 80; s.maxHp = 80;
+  s.deckIds = STARTER.slice();
+  s.relics = [];
+  s.score = 0;
+  s.playerBuffs = { str: 0, thorns: 0, entropy: 0, vuln: 0, weak: 0, fatigue: 0 };
+  s.playerStr = 0;
+  s.playerPolar = 0;
+  s.map = null;
+  s.map = genMap(s);
+  s.node = null;
+  return s;
+}
+
+function pickNode(state, floor, idx) {
+  const s = clone(state);
+  const opts = s.map[floor - 1];
+  if (!opts || !opts[idx]) return state;
+  const node = clone(opts[idx]);
+  s.node = node;
+  s.floor = floor;
+
+  if (node.type === 'BATTLE' || node.type === 'ELITE' || node.type === 'BOSS') {
+    return startBattle(s, node.enemies);
+  }
+  if (node.type === 'EVENT') {
+    s.event = { id: node.event, done: false };
+    s.fsm = 'EVENT';
+    return s;
+  }
+  if (node.type === 'REST') {
+    s.fsm = 'REST';
+    return s;
+  }
+  return s;
+}
+
+function takeCard(state, id) {
+  const s = clone(state);
+  if (!CARDS[id]) return state;
+  s.deckIds.push(id);
+  s.offers = null;
+  return nextFloor(s);
+}
+
+function skipCard(state) {
+  const s = clone(state);
+  s.offers = null;
+  s.score += 20;
+  return nextFloor(s);
+}
+
+function nextFloor(s) {
+  if (s.floor >= 8) { s.fsm = 'VICTORY'; s.score += 1000 + s.hp * 10; return s; }
+  s.floor++;
+  s.fsm = 'MAP';
+  s.node = null;
+  return s;
+}
+
+function eventChoose(state, idx) {
+  const s = clone(state);
+  if (!s.event) return state;
+  const ev = EVENTS[s.event.id];
+  const opt = ev.op[idx];
+  if (!opt) return state;
+  s.eventResult = resolveEffect(s, opt.eff);
+  s.event.done = true;
+  return s;
+}
+
+function resolveEffect(s, eff) {
+  const out = [];
+  const apply = (e) => {
+    if (e.heal) { s.hp = Math.min(s.maxHp, s.hp + e.heal); out.push('回复 ' + e.heal + ' 生命'); }
+    if (e.lose) { s.hp = Math.max(0, s.hp - e.lose); out.push('失去 ' + e.lose + ' 生命'); }
+    if (e.maxHp) { s.maxHp += e.maxHp; s.hp += e.maxHp; out.push('最大生命 +' + e.maxHp); }
+    if (e.card) {
+      const pool = Object.keys(CARDS).filter(id => CARDS[id].q <= e.card);
+      const r = RNG.pick(s.rng, pool);
+      s.rng = r.s;
+      s.deckIds.push(r.v);
+      out.push('获得「' + CARDS[r.v].n + '」');
+    }
+    if (e.relic) {
+      const have = s.relics;
+      const pool = Object.keys(RELICS).filter(k => have.indexOf(k) < 0);
+      if (pool.length) {
+        const r = RNG.pick(s.rng, pool);
+        s.rng = r.s;
+        s.relics.push(r.v);
+        out.push('获得遗物「' + RELICS[r.v].n + '」');
+      } else {
+        out.push('没有新的遗物了');
+      }
+    }
+  };
+  if (eff.gamble) {
+    const g = RNG.chance(s.rng, eff.gamble.pct);
+    s.rng = g.s;
+    apply(g.ok ? eff.gamble.ok : eff.gamble.bad);
+  } else {
+    apply(eff);
+  }
+  if (s.hp <= 0) { s.fsm = 'DEFEAT'; }
+  return out;
+}
+
+function eventDone(state) {
+  const s = clone(state);
+  s.event = null;
+  s.eventResult = null;
+  if (s.fsm === 'DEFEAT') return s;
+  return nextFloor(s);
+}
+
+function restChoose(state, kind) {
+  const s = clone(state);
+  if (kind === 'heal') {
+    const amt = Math.round(s.maxHp * 0.4);
+    s.hp = Math.min(s.maxHp, s.hp + amt);
+    return nextFloor(s);
+  }
+  if (kind === 'remove') {
+    s.fsm = 'REMOVE';
+    return s;
+  }
+  return state;
+}
+
+function removeCard(state, deckIdx) {
+  const s = clone(state);
+  if (deckIdx < 0 || deckIdx >= s.deckIds.length) return state;
+  if (s.deckIds.length <= 5) return state;
+  s.deckIds.splice(deckIdx, 1);
+  return nextFloor(s);
+}
+
+function continueRun(state) { return state; }
+
+/* ---------- 15. 分数 ---------- */
+function finalScore(s) {
+  return s.score + s.floor * 40 + s.relics.length * 120;
+}
+
+/* ---------- 16. 导出 ---------- */
+const CORE = {
+  RNG, CARDS, ENEMIES, RELICS, EVENTS, STARTER, ACT,
+  initialState, reduce, clone, finalScore, hashStr,
+  damageOf, mkNode, genMap, startBattle
+};
+if (typeof module !== 'undefined' && module.exports) module.exports = CORE;
+if (typeof window !== 'undefined') window.CORE = CORE;
+
+</script>
+<script>
+'use strict';
+/* 期末迷宫 · 渲染层（只读 core，不发事件） */
+(function () {
+  const C = window.CORE;
+  const { CARDS, ENEMIES, RELICS, EVENTS, ACT, reduce, clone } = C;
+
+  let S = null;
+  let seedInput = '';
+  let busy = false;
+
+  const el = (t, cls, txt) => {
+    const d = document.createElement(t);
+    if (cls) d.className = cls;
+    if (txt != null) d.textContent = txt;
+    return d;
+  };
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+  function todaySeed() {
+    const d = new Date();
+    return 'D' + d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate());
+  }
+  function pad(n) { return n < 10 ? '0' + n : '' + n; }
+
+  /* ---------------- 顶栏 ---------------- */
+  function topBar() {
+    const bar = el('div', 'topbar');
+    const left = el('div', 'tb-left');
+    left.innerHTML = '<b>' + S.hp + '</b><span>/' + S.maxHp + '</span>' +
+      (S.battle && S.battle.block ? '<i class="blk">守 ' + S.battle.block + '</i>' : '');
+    bar.appendChild(left);
+
+    const mid = el('div', 'tb-mid');
+    mid.textContent = '第 ' + S.floor + ' / 8 层';
+    bar.appendChild(mid);
+
+    const right = el('div', 'tb-right');
+    right.textContent = 'SEED ' + S.seedLabel;
+    bar.appendChild(right);
+    return bar;
+  }
+
+  function hpBar() {
+    const w = el('div', 'hpwrap');
+    const bar = el('div', 'hpbar');
+    const fill = el('i');
+    fill.style.width = Math.max(0, 100 * S.hp / S.maxHp) + '%';
+    fill.style.background = S.hp / S.maxHp < 0.3 ? 'linear-gradient(90deg,#c0392b,#e74c3c)' : 'linear-gradient(90deg,#c9762a,#e8a33d)';
+    bar.appendChild(fill);
+    w.appendChild(bar);
+    return w;
+  }
+
+  function relicRow() {
+    if (!S.relics.length) return el('div', 'relics empty');
+    const r = el('div', 'relics');
+    for (const id of S.relics) {
+      const d = el('span', 'relic', '◆ ' + RELICS[id].n);
+      d.title = RELICS[id].d;
+      r.appendChild(d);
+    }
+    return r;
+  }
+
+  /* ---------------- TITLE ---------------- */
+  function renderTitle() {
+    const root = el('div', 'screen title-screen');
+    const box = el('div', 'title-box');
+    box.innerHTML =
+      '<div class="logo">期末<em>迷宫</em></div>' +
+      '<div class="sub">FINAL EXAM MAZE · 光电系肉鸽卡牌</div>' +
+      '<div class="desc">' +
+        '你是光电信息科学与工程的大三学生。<br>' +
+        '期末周，教学楼变成了一座会重排的迷宫。<br>' +
+        '你手里只有一叠物理定律。' +
+      '</div>';
+    root.appendChild(box);
+
+    const seedBox = el('div', 'seedbox');
+    const lab = el('div', 'seedlabel', '求签 · 输入或留空取今日种子');
+    seedBox.appendChild(lab);
+    const inp = el('input', 'seedinput');
+    inp.placeholder = TODAY_SEED;
+    inp.maxLength = 16;
+    inp.value = seedInput;
+    inp.oninput = () => { seedInput = inp.value; };
+    seedBox.appendChild(inp);
+
+    const row = el('div', 'btnrow');
+    const b1 = el('button', 'btn primary', '开 始 求 签');
+    b1.onclick = () => {
+      const raw = (seedInput || TODAY_SEED).trim();
+      const seed = C.hashStr(raw);
+      S = C.initialState(seed);
+      S.seedLabel = raw.slice(0, 12);
+      S = reduce(S, { type: ACT.START });
+      render();
+    };
+    row.appendChild(b1);
+    if (localStorage.getItem('fmz_save')) {
+      const b2 = el('button', 'btn', '继续上局');
+      b2.onclick = () => {
+        try {
+          const raw = localStorage.getItem('fmz_save');
+          const o = JSON.parse(raw);
+          S = o.state; S.seedLabel = o.label || 'SAVED';
+          render();
+        } catch (e) { alert('存档损坏'); }
+      };
+      row.appendChild(b2);
+    }
+    seedBox.appendChild(row);
+    root.appendChild(seedBox);
+
+    const best = el('div', 'bestline');
+    const bs = localStorage.getItem('fmz_best');
+    best.textContent = bs ? '本机最高分 ' + bs : '还没有记录';
+    root.appendChild(best);
+
+    const foot = el('div', 'titlefoot', '同一种子 = 同一牌序。比分数，不比手速。');
+    root.appendChild(foot);
+    return root;
+  }
+
+  /* ---------------- MAP ---------------- */
+  const NODE_ICON = { BATTLE: '✕', ELITE: '✸', REST: '⌂', EVENT: '?', BOSS: '♛' };
+  const NODE_NAME = { BATTLE: '遭遇', ELITE: '精英', REST: '营地', EVENT: '事件', BOSS: '答辩' };
+  const NODE_DESC = {
+    BATTLE: '普通敌人',
+    ELITE: '强敌 · 掉好牌',
+    REST: '休整或打磨',
+    EVENT: '未知',
+    BOSS: '期末答辩委员会'
+  };
+
+  function renderMap() {
+    const root = el('div', 'screen');
+    root.appendChild(topBar());
+    root.appendChild(hpBar());
+    root.appendChild(relicRow());
+
+    const list = el('div', 'maplist');
+    const opts = S.map[S.floor - 1] || [];
+    opts.forEach((n, i) => {
+      const row = el('div', 'mapnode ' + n.type.toLowerCase());
+      const ic = el('div', 'mn-ic', NODE_ICON[n.type] || '?');
+      const tx = el('div', 'mn-tx');
+      tx.innerHTML = '<div class="mn-t">' + NODE_NAME[n.type] + '</div>' +
+        '<div class="mn-d">' + esc(NODE_DESC[n.type]) + '</div>';
+      row.appendChild(ic); row.appendChild(tx);
+      if (n.type === 'BATTLE' || n.type === 'ELITE' || n.type === 'BOSS') {
+        const tag = el('div', 'mn-enemies');
+        for (const e of n.enemies) tag.appendChild(el('span', 'etag', ENEMIES[e].n));
+        row.appendChild(tag);
+      }
+      row.onclick = () => {
+        if (busy) return;
+        S = reduce(S, { type: ACT.PICK_NODE, floor: S.floor, idx: i });
+        save(); render();
+      };
+      list.appendChild(row);
+    });
+    root.appendChild(list);
+
+    const hint = el('div', 'hintline', '选一个节点进入');
+    root.appendChild(hint);
+    return root;
+  }
+
+  /* ---------------- BATTLE ---------------- */
+  function renderBattle() {
+    const b = S.battle;
+    const root = el('div', 'screen battle');
+    root.appendChild(topBar());
+    root.appendChild(hpBar());
+    root.appendChild(relicRow());
+
+    /* 敌人区 */
+    const arena = el('div', 'arena');
+    const hero = el('div', 'hero');
+    hero.innerHTML = '<div class="pa">✦</div><div class="pn">你</div>';
+    if (S.playerBuffs && S.playerBuffs.str) hero.appendChild(el('div', 'bstr', '力 ' + S.playerBuffs.str));
+    if (S.playerBuffs && S.playerBuffs.thorns) hero.appendChild(el('div', 'bstr', '棘 ' + S.playerBuffs.thorns));
+    arena.appendChild(hero);
+
+    const en = el('div', 'enemies');
+    for (const e of b.enemies) {
+      if (e.hp <= 0) continue;
+      const card = el('div', 'enemy');
+      const it = e.intent || {};
+      let intent = '';
+      if (it.a) intent = '⚔ ' + ((it.a) + (e.str || 0)) + (it.times > 1 ? ' ×' + it.times : '');
+      else if (it.bl) intent = '◆ 守 ' + it.bl;
+      else if (it.sf) intent = '↑ 强化';
+      else if (it.db) intent = '↓ 削弱';
+      card.appendChild(el('div', 'intent', intent));
+      card.appendChild(el('div', 'av', ENEMIES[e.id].ic));
+      card.appendChild(el('div', 'en', ENEMIES[e.id].n));
+      const hp = el('div', 'ehp', e.hp + ' / ' + e.maxHp + (e.block ? '  守' + e.block : ''));
+      card.appendChild(hp);
+      const hbb = el('div', 'ehpbar');
+      const hf = el('i');
+      hf.style.width = Math.max(0, 100 * e.hp / e.maxHp) + '%';
+      hbb.appendChild(hf);
+      card.appendChild(hbb);
+      const chips = el('div', 'echips');
+      if (e.weak) chips.appendChild(el('span', 'ec', '弱' + e.weak));
+      if (e.vuln) chips.appendChild(el('span', 'ec', '伤' + e.vuln));
+      if (e.charge) chips.appendChild(el('span', 'ec', '阻' + e.charge));
+      if (chips.childNodes.length) card.appendChild(chips);
+      card.onclick = () => onEnemyClick(e.uid);
+      if (b.sel >= 0) card.classList.add('targetable');
+      en.appendChild(card);
+    }
+    arena.appendChild(en);
+    root.appendChild(arena);
+
+    /* 日志 */
+    const logs = (b.log || []).slice(-3);
+    const log = el('div', 'log');
+    log.innerHTML = logs.map(l => '<div>' + esc(l) + '</div>').join('');
+    root.appendChild(log);
+
+    /* 手牌 */
+    const hand = el('div', 'hand');
+    b.hand.forEach((inst, i) => {
+      const c = CARDS[inst.id];
+      const card = el('div', 'card' + (b.sel === i ? ' sel' : ''));
+      card.setAttribute('data-hand', i);
+      if (c.c > b.energy) card.classList.add('poor');
+      card.appendChild(el('div', 'cost', String(c.c)));
+      card.appendChild(el('div', 'nm', c.n));
+      card.appendChild(el('div', 'tx', c.d));
+      const typeTag = el('div', 'ttag', c.t === 'atk' ? '攻击' : c.t === 'skl' ? '技能' : '能力');
+      typeTag.classList.add(c.t);
+      card.appendChild(typeTag);
+      card.onclick = () => onCardClick(i);
+      hand.appendChild(card);
+    });
+    root.appendChild(hand);
+
+    /* 底部 */
+    const foot = el('div', 'battlefoot');
+    const nrg = el('div', 'nrg', '⚡ ' + b.energy + ' / ' + b.maxEnergy);
+    foot.appendChild(nrg);
+    const hint = el('div', 'bhint');
+    hint.textContent = b.sel >= 0 ? '点一个敌人' : '点手牌打出';
+    foot.appendChild(hint);
+    const end = el('button', 'btn endturn', '结束回合');
+    end.disabled = busy;
+    end.onclick = () => { if (busy) return; S = reduce(S, { type: ACT.END_TURN }); save(); render(); };
+    foot.appendChild(end);
+    root.appendChild(foot);
+
+    return root;
+  }
+
+  let pendingCard = -1;
+  function onCardClick(i) {
+    if (busy) return;
+    const b = S.battle;
+    const notBattle = !b;
+    if (notBattle) return;
+    const c = CARDS[b.hand[i].id];
+    if (!c || c.c > b.energy) return;
+    const alive = b.enemies.filter(e => e.hp > 0);
+    const needsTarget = c.ops.some(o => o.k === 'dmg' && !o.all) || c.ops.some(o => o.k === 'edebuff');
+    if (needsTarget && alive.length > 1) {
+      pendingCard = i;
+      b.sel = i;
+      render();
+      return;
+    }
+    const tgt = alive.length ? alive[0].uid : null;
+    S = reduce(S, { type: ACT.PLAY, hand: i, target: tgt });
+    pendingCard = -1;
+    save(); render();
+  }
+  function onEnemyClick(uid) {
+    if (pendingCard < 0) return;
+    const idx = pendingCard;
+    pendingCard = -1;
+    S = reduce(S, { type: ACT.PLAY, hand: idx, target: uid });
+    save(); render();
+  }
+
+  /* ---------------- REWARD ---------------- */
+  function renderReward() {
+    const root = el('div', 'screen');
+    root.appendChild(topBar());
+    root.appendChild(hpBar());
+    const t = el('h2', 'ptitle', '战利品 · 选一张');
+    root.appendChild(t);
+    const list = el('div', 'offerlist');
+    (S.offers || []).forEach(id => {
+      const c = CARDS[id];
+      const row = el('div', 'offer');
+      row.innerHTML = '<div class="onm">' + esc(c.n) + '<i class="oc">' + c.c + ' 费</i></div>' +
+        '<div class="od">' + esc(c.d) + '</div>';
+      row.onclick = () => { S = reduce(S, { type: ACT.TAKE_CARD, id }); save(); render(); };
+      list.appendChild(row);
+    });
+    root.appendChild(list);
+    const skip = el('button', 'btn', '跳过（+20 分）');
+    skip.onclick = () => { S = reduce(S, { type: ACT.SKIP_CARD }); save(); render(); };
+    root.appendChild(skip);
+    return root;
+  }
+
+  /* ---------------- EVENT ---------------- */
+  function renderEvent() {
+    const root = el('div', 'screen');
+    root.appendChild(topBar());
+    root.appendChild(hpBar());
+    const ev = EVENTS[S.event.id];
+    const box = el('div', 'evbox');
+    box.appendChild(el('h2', 'evt', ev.n));
+    box.appendChild(el('p', 'evd', ev.d));
+    root.appendChild(box);
+
+    if (!S.event.done) {
+      const list = el('div', 'evopts');
+      ev.op.forEach((o, i) => {
+        const b = el('div', 'evopt');
+        b.innerHTML = '<div class="evo-t">' + esc(o.t) + '</div><div class="evo-d">' + esc(o.d) + '</div>';
+        b.onclick = () => { S = reduce(S, { type: ACT.EVENT_CHOOSE, idx: i }); save(); render(); };
+        list.appendChild(b);
+      });
+      root.appendChild(list);
+    } else {
+      const res = el('div', 'evres');
+      (S.eventResult || []).forEach(r => res.appendChild(el('div', 'evr', r)));
+      root.appendChild(res);
+      const go = el('button', 'btn primary', '继续');
+      go.onclick = () => { S = reduce(S, { type: ACT.EVENT_DONE }); save(); render(); };
+      root.appendChild(go);
+    }
+    return root;
+  }
+
+  /* ---------------- REST ---------------- */
+  function renderRest() {
+    const root = el('div', 'screen');
+    root.appendChild(topBar());
+    root.appendChild(hpBar());
+    const box = el('div', 'evbox');
+    box.appendChild(el('h2', 'evt', '营地 · 空教室'));
+    box.appendChild(el('p', 'evd', '灯关了一半，暖气还热着。'));
+    root.appendChild(box);
+    const list = el('div', 'evopts');
+    const amt = Math.round(S.maxHp * 0.4);
+    const a = el('div', 'evopt');
+    a.innerHTML = '<div class="evo-t">☕ 睡一觉</div><div class="evo-d">回复约 ' + amt + ' 点生命</div>';
+    a.onclick = () => { S = reduce(S, { type: ACT.REST_CHOOSE, kind: 'heal' }); save(); render(); };
+    list.appendChild(a);
+    const b = el('div', 'evopt');
+    b.innerHTML = '<div class="evo-t">✎ 整理笔记</div><div class="evo-d">永久移除牌组里的一张牌</div>';
+    b.onclick = () => { S = reduce(S, { type: ACT.REST_CHOOSE, kind: 'remove' }); save(); render(); };
+    list.appendChild(b);
+    root.appendChild(list);
+    return root;
+  }
+
+  /* ---------------- REMOVE ---------------- */
+  function renderRemove() {
+    const root = el('div', 'screen');
+    root.appendChild(topBar());
+    const t = el('h2', 'ptitle', '删除一张牌');
+    root.appendChild(t);
+    const list = el('div', 'offerlist');
+    const counts = {};
+    S.deckIds.forEach(id => { counts[id] = (counts[id] || 0) + 1; });
+    const sorted = Object.keys(counts).sort((a, b) => {
+      const qa = CARDS[a].q, qb = CARDS[b].q;
+      return qa - qb;
+    });
+    for (const id of sorted) {
+      const c = CARDS[id];
+      const row = el('div', 'offer');
+      row.innerHTML = '<div class="onm">' + esc(c.n) +
+        '<i class="oc">' + counts[id] + ' 张</i></div>' +
+        '<div class="od">' + esc(c.d) + '</div>';
+      row.onclick = () => {
+        const idx = S.deckIds.indexOf(id);
+        S = reduce(S, { type: ACT.REMOVE_CARD, deckIdx: idx });
+        save(); render();
+      };
+      list.appendChild(row);
+    }
+    root.appendChild(list);
+    return root;
+  }
+
+  /* ---------------- VICTORY / DEFEAT ---------------- */
+  function renderEnd(win) {
+    const root = el('div', 'screen end');
+    const sc = C.finalScore(S);
+    const bestN = +(localStorage.getItem('fmz_best') || 0);
+    if (sc > bestN) localStorage.setItem('fmz_best', String(sc));
+    localStorage.removeItem('fmz_save');
+
+    const box = el('div', 'endbox');
+    box.innerHTML =
+      '<div class="endt ' + (win ? 'win' : 'lose') + '">' + (win ? '答 辩 通 过' : '挂 科') + '</div>' +
+      '<div class="ends">' + (win ? '你活过了期末周。' : '迷宫的灯全灭了。') + '</div>';
+    root.appendChild(box);
+
+    const stats = el('div', 'endstats');
+    const rows = [
+      ['最终得分', String(sc)],
+      ['到达层数', S.floor + ' / 8'],
+      ['牌组张数', String(S.deckIds.length)],
+      ['遗物', String(S.relics.length)],
+      ['种子', S.seedLabel],
+      ['本机最高', String(Math.max(sc, bestN))]
+    ];
+    for (const [k, v] of rows) {
+      const r = el('div', 'esrow');
+      r.appendChild(el('span', 'esk', k));
+      r.appendChild(el('span', 'esv', v));
+      stats.appendChild(r);
+    }
+    root.appendChild(stats);
+
+    const ag = el('button', 'btn primary', '再来一局');
+    ag.onclick = () => { S = null; render(); };
+    root.appendChild(ag);
+    return root;
+  }
+
+  /* ---------------- 存档 ---------------- */
+  function save() {
+    if (!S || S.fsm === 'VICTORY' || S.fsm === 'DEFEAT' || S.fsm === 'TITLE') {
+      if (S && (S.fsm === 'VICTORY' || S.fsm === 'DEFEAT')) localStorage.removeItem('fmz_save');
+      return;
+    }
+    try {
+      localStorage.setItem('fmz_save', JSON.stringify({ state: S, label: S.seedLabel }));
+    } catch (e) { /* 配额满就跳过 */ }
+  }
+
+  /* ---------------- 主渲染 ---------------- */
+  function render() {
+    const app = document.getElementById('app');
+    app.innerHTML = '';
+    if (!S || S.fsm === 'TITLE') { app.appendChild(renderTitle()); return; }
+    let scr;
+    switch (S.fsm) {
+      case 'MAP': scr = renderMap(); break;
+      case 'BATTLE': scr = renderBattle(); break;
+      case 'REWARD': scr = renderReward(); break;
+      case 'EVENT': scr = renderEvent(); break;
+      case 'REST': scr = renderRest(); break;
+      case 'REMOVE': scr = renderRemove(); break;
+      case 'VICTORY': scr = renderEnd(true); break;
+      case 'DEFEAT': scr = renderEnd(false); break;
+      default: scr = renderTitle(); break;
+    }
+    app.appendChild(scr);
+  }
+
+  const TODAY_SEED = todaySeed();
+  window.__ui = {
+    render,
+    get state() { return S; },
+    set state(v) { S = v; },
+    label(v) { if (S) S.seedLabel = v; }
+  };
+  window.__boot = function () { render(); };
+  document.addEventListener('DOMContentLoaded', render);
+  if (document.readyState !== 'loading') render();
+})();
+
+</script>
+
+<script>
+if ('serviceWorker' in navigator && location.protocol !== 'file:') {
+  window.addEventListener('load', function () {
+    navigator.serviceWorker.register('sw.js').catch(function () {});
+  });
+}
+</script>
+</body>
+</html>
